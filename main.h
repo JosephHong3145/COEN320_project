@@ -37,8 +37,7 @@ typedef struct ProducerThreadArguments {
     char const *label;
     char const *filePath;
     double *sharedMemoryPtr;
-    pthread_cond_t waitCond;
-    pthread_mutex_t lock;
+    sem_t waitSem;
 } ProducerThreadArguments;
 
 #define VOI_NIL -1337

@@ -29,8 +29,7 @@ uint64_t const producerPeriods[VOICount] = {
 };
 uint64_t const consumerOffset = 100;
 uint64_t const consumerPeriod = 5;
-pthread_cond_t consumerWaitCond;
-pthread_mutex_t consumerLock;
+sem_t consumerWaitSem;
 
 void assertFatal(bool condition, char const *format, ...) {
   if(condition == true) return;
@@ -102,7 +101,7 @@ void *producerThread(void *data) {
   clock_gettime(CLOCK_MONOTONIC, &tv);
   start = tv.tv_sec * THOUSAND + tv.tv_nsec / MILLION;
   while(fgets(line, sizeof(line), file) != NULL) {
-    pthread_cond_wait(&arguments->waitCond, &arguments->lock);
+    sem_wait(&arguments->waitSem);
     clock_gettime(CLOCK_MONOTONIC, &tv);
     uint64_t current = tv.tv_sec * THOUSAND + tv.tv_nsec / MILLION;
     printf("//// PRODUCER THREAD %s WAKING UP (%ld) /////\n", arguments->label, current - start);
@@ -125,7 +124,7 @@ void *consumerThread(void *data) {
   start = tv.tv_sec * THOUSAND + tv.tv_nsec / MILLION;
   while(true) {
     // Waiting code...
-    pthread_cond_wait(&consumerWaitCond, &consumerLock);
+    sem_wait(&consumerWaitSem);
     clock_gettime(CLOCK_MONOTONIC, &tv);
     uint64_t current = tv.tv_sec * THOUSAND + tv.tv_nsec / MILLION;
     printf("//// CONSUMER THREAD UNLOCKED (%ld) ////\n", current - start);
@@ -182,10 +181,10 @@ void *timerThread(void *arg) {
     sigwaitinfo(&sigset, &info);
     switch(info.si_value.sival_int) {
       case -1:
-        pthread_cond_signal(&consumerWaitCond);
+        sem_post(&consumerWaitSem);
         break;
       default:
-        pthread_cond_signal(&producerThreadArgs[info.si_value.sival_int].waitCond);
+        sem_post(&producerThreadArgs[info.si_value.sival_int].waitSem);
         break;
     }
   }
@@ -197,15 +196,13 @@ int main() {
   pthread_t consumerThreadID;
   pthread_t timerThreadID;
   maskThreadFromHandlingAlarmSignal();
-  pthread_cond_init(&consumerWaitCond, NULL);
-  pthread_mutex_init(&consumerLock, NULL);
+  sem_init(&consumerWaitSem, 0, 0);
   pthread_create(&consumerThreadID, NULL, &consumerThread, NULL);
   for(int i = 0; i < VOICount; i += 1) {
     producerThreadArgs[i].label = VOILabels[i];
     producerThreadArgs[i].filePath = VOIFilePaths[i];
     producerThreadArgs[i].sharedMemoryPtr = &sharedMemory[i];
-    pthread_cond_init(&producerThreadArgs[i].waitCond, NULL);
-    pthread_mutex_init(&producerThreadArgs[i].lock, NULL);
+    sem_init(&producerThreadArgs[i].waitSem, 0, 0);
     pthread_create(&producerThreadIDs[i], NULL, &producerThread, &producerThreadArgs[i]);
   }
   pthread_create(&timerThreadID, NULL, &timerThread, NULL);
