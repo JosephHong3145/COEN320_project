@@ -1,3 +1,3 @@
 all:
-	gcc ${wildcard *.c} -o out -lrt -lpthread -Wall -g
+	qcc ${wildcard *.c} -o out
 	./out
